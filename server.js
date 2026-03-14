@@ -1,12 +1,13 @@
 import dotenv from 'dotenv';
 import SQLDB from './config/database/sqlDB.js';
 import { app } from './app.js';
+import { DatabaseService } from './config/database/databaseConfig.js';
 
 dotenv.config();
 
 const PORT = process.env.PORT || 3000;
 
-const DB = process.env.DB_TYPE === 'mssql' ? new SQLDB() : null;
+const DB = DatabaseService[process.env.DB_TYPE]();
 
 await DB.connectToDb().then(() => {
   console.log('Connected to the database successfully.');

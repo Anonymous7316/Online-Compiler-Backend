@@ -1,5 +1,4 @@
 import dotenv from 'dotenv';
-import SQLDB from './config/database/sqlDB.js';
 import { app } from './app.js';
 import { DatabaseService } from './config/database/databaseConfig.js';
 

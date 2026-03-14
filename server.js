@@ -4,7 +4,7 @@ import { DatabaseService } from './config/database/databaseConfig.js';
 
 dotenv.config();
 
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT;
 
 const DB = DatabaseService[process.env.DB_TYPE]();
 

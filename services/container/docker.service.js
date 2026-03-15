@@ -1,49 +1,97 @@
 import ContainerManager from "./containerManager.js";
-import * as docker from "dockerode-process";
-import { containerImages } from "./containerConfig.js";
+import Docker from "dockerode";
+import {
+  containerImages,
+  fileExtensions,
+  executionCommands,
+} from "./containerConfig.js";
 
 class DockerService extends ContainerManager {
   constructor() {
     super();
     // Initialize Docker client or any necessary setup here
-    this.docker = new docker();
+    this.docker = new Docker({ socketPath: "/var/run/docker.sock" });
   }
-    async startContainer(language) {
-        // Implement logic to start a new Docker container
-        console.log("Starting Docker container...");
-        this.container = await this.docker.createContainer({
-            Image: containerImages[language], // Assuming you have pre-built images for each language
-            Tty: true,
+
+  async startContainer(code, language) {
+    // Implement logic to start a new Docker container
+    console.log("Starting Docker container...");
+    this.container = await this.docker.createContainer({
+      Image: containerImages[language], // Assuming you have pre-built images for each language
+      Tty: true,
+      name: language + "_container_" + Date.now(), // Unique name for the container
+      AttachStdin: false,
+      AttachStdout: true,
+      AttachStderr: true,
+      OpenStdin: false,
+      StdinOnce: false,
+    });
+    await this.container.start();
+    console.log(`Docker container started with ID ${this.container.id}`);
+    return this.container.id;
+  }
+
+  async getContainerStatus(containerId) {
+    // Implement logic to get the status of a Docker container by its ID
+    console.log(`Getting status of Docker container with ID ${containerId}...`);
+    const container = this.docker.getContainer(containerId);
+    const inspectData = await container.inspect();
+    return inspectData.State.Status;
+  }
+
+  getExecutionCommand(filename, language) {
+    return executionCommands[language](filename);
+  }
+
+  async executeCode(code, language, submission_id) {
+    // Implement logic to execute code in a Docker container and capture the output and status
+    const containerId = await this.startContainer(code, language);
+    const container = this.docker.getContainer(containerId);
+    // Here you would implement the logic to copy the code into the container, execute it based on the language, and capture the output.
+    const fileName = `${submission_id}.${fileExtensions[language]}`;
+    container.modem.followProgress(
+      container.exec({
+        Cmd: [
+          "sh",
+          "-c",
+          `echo "${code}" > /code/${fileName} && chmod +x /code/${fileName} && cd /code && ${this.getExecutionCommand(fileName, language)}`,
+        ],
+        AttachStdout: true,
+        AttachStderr: true,
+      }),
+      (err, stream) => {
+        if (err) {
+          return `Error executing code in container: ${err.message}`;
+        }
+        stream.on("data", (chunk) => {
+          return chunk.toString();
         });
-        await this.container.start();
-        console.log(`Docker container started with ID ${this.container.id}`);
-        return this.container.id;
-    }
-    async stopContainer(containerId) {
-        // Implement logic to stop a Docker container by its ID
-        console.log(`Stopping Docker container with ID ${containerId}...`);
-        const container = this.docker.getContainer(containerId);
-        await container.stop();
-        console.log(`Docker container with ID ${containerId} stopped.`);
-    }
-    async getContainerStatus(containerId) {
-        // Implement logic to get the status of a Docker container by its ID
-        console.log(`Getting status of Docker container with ID ${containerId}...`);
-        const container = this.docker.getContainer(containerId);
-        const inspectData = await container.inspect();
-        return inspectData.State.Status;
-    }
-    async executeCodeInContainer(containerId, code, language) {
-        // Implement logic to execute code in a specified Docker container and return the output
-        console.log(`Executing code in Docker container with ID ${containerId}...`);
-        const container = this.docker.getContainer(containerId);
-        // Here you would implement the logic to copy the code into the container, execute it based on the language, and capture the output.
-        
-    }
-    async removeContainer(containerId) {
-        // Implement logic to remove a Docker container by its ID
-        console.log(`Removing Docker container with ID ${containerId}...`);
-    }
+        stream.on("end", async () => {
+          console.log(
+            "Execution completed. Stopping and removing container...",
+          );
+          await this.stopContainer(containerId);
+          await this.removeContainer(containerId);
+        });
+      },
+    );
+  }
+
+  async stopContainer(containerId) {
+    // Implement logic to stop a Docker container by its ID
+    console.log(`Stopping Docker container with ID ${containerId}...`);
+    const container = this.docker.getContainer(containerId);
+    await container.stop();
+    console.log(`Docker container with ID ${containerId} stopped.`);
+  }
+
+  async removeContainer(containerId) {
+    // Implement logic to remove a Docker container by its ID
+    console.log(`Removing Docker container with ID ${containerId}...`);
+    const container = this.docker.getContainer(containerId);
+    await container.remove();
+    console.log(`Docker container with ID ${containerId} removed.`);
+  }
 }
 
 export default DockerService;

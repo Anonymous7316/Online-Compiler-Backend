@@ -20,3 +20,5 @@ class ContainerManager {
         throw new Error("removeContainer method not implemented.");
     }
 }
+
+export default ContainerManager;

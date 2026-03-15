@@ -6,6 +6,7 @@ import {
 import { Queue, Worker } from "bullmq";
 import DB from "../../config/database/dbAbstract.js";
 import dotenv from "dotenv";
+import DockerService from "../container/docker.service.js";
 
 dotenv.config();
 
@@ -138,7 +139,7 @@ class BullMqSubmissionService extends QueueSubmissionService {
       const language = submission.code_language;
 
       // After getting the code and language, you would implement the actual logic to compile and run the code in the docker container, and capture the output and status.
-      const result = await this.compileAndRunCode(code, language);
+      const result = await this.compileAndRunCode(code, language, submission_id);
 
       // Update status to completed with result
       await this.db.setSubmissionStatus(submission_id, "COMPLETED");
@@ -167,11 +168,12 @@ class BullMqSubmissionService extends QueueSubmissionService {
     }
   }
 
-  async compileAndRunCode(code, language) {
+  async compileAndRunCode(code, language, submission_id) {
     // Implement actual logic to compile and run code in a docker container based on the language
     // This is a placeholder implementation and should be replaced with actual logic.
-    console.log(code, language);
-    return `Output of the code in ${language}`;
+    const dockerService = new DockerService();
+    const result = await dockerService.executeCode(code, language, submission_id);
+    return result;
   }
 }
 

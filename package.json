@@ -22,7 +22,6 @@
     "express-joi-validation": "^6.1.0",
     "kafkajs": "^2.2.4",
     "morgan": "^1.10.1",
-    "msnodesqlv8": "^5.1.3",
     "mssql": "^12.2.0",
     "pastebin-api": "^7.0.0",
     "socket.io": "^4.8.3"

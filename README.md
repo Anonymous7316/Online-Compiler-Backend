@@ -11,6 +11,7 @@ A scalable online code execution platform that allows users to submit code in mu
 - [Configuration](#configuration)
 - [API Endpoints](#api-endpoints)
 - [How It Works](#how-it-works)
+- [Testing](#testing)
 - [Adding New Features](#adding-new-features)
 - [Best Practices](#best-practices)
 - [Troubleshooting](#troubleshooting)
@@ -24,7 +25,7 @@ CodeCompilerExpress is an online code execution platform (similar to Judge0 or L
 - Accepts code submissions in multiple programming languages
 - Executes code in isolated Docker containers for security
 - Uses a queue-based asynchronous architecture for scalability
-- Stores code in Pastebin and metadata in MSSQL database
+- Stores code in Pastebin and metadata in MSSQL or MongoDB database
 - Supports 6 languages: Python, JavaScript, Java, C++, Ruby, Go
 
 ### Use Cases
@@ -40,8 +41,8 @@ CodeCompilerExpress is an online code execution platform (similar to Judge0 or L
 
 ```
 ┌─────────────┐     ┌─────────────┐     ┌─────────────┐
-│   Express   │────▶│   MSSQL     │     │   Redis     │
-│   Server    │     │  Database   │     │   (Queue)   │
+│   Express   │────▶│  MSSQL or   │     │   Redis     │
+│   Server    │     │  MongoDB    │     │   (Queue)   │
 └─────────────┘     └─────────────┘     └─────────────┘
        │                                       │
        ▼                                       ▼
@@ -62,7 +63,7 @@ CodeCompilerExpress is an online code execution platform (similar to Judge0 or L
 | Component | Technology | Purpose |
 |-----------|------------|---------|
 | Web Server | Express.js | REST API handling |
-| Database | MSSQL | Metadata & status storage |
+| Database | MSSQL or MongoDB | Metadata & status storage |
 | Queue | BullMQ + Redis | Job processing |
 | Storage | Pastebin API | Code storage |
 | Execution | Docker | Isolated code execution |
@@ -76,7 +77,7 @@ CodeCompilerExpress is an online code execution platform (similar to Judge0 or L
 
 - Node.js 18+
 - Docker Desktop (running)
-- MSSQL Server
+- MSSQL Server **or** MongoDB
 - Redis Server
 - Pastebin Account (for code storage)
 
@@ -97,7 +98,7 @@ cp .env.example .env
 npm run dev
 
 # In a separate terminal, start the worker
-node services/workers/submissionWorker.js
+npm run worker
 ```
 
 ### Test the API
@@ -131,7 +132,8 @@ codeCompilerExpress/
 │   └── database/
 │       ├── databaseConfig.js  # Factory for DB instances
 │       ├── dbAbstract.js       # Abstract base class
-│       └── sqlDB.js            # MSSQL implementation
+│       ├── sqlDB.js            # MSSQL implementation
+│       └── mongoDB.js          # MongoDB implementation
 │
 ├── controllers/
 │   ├── auth.controller.js      # Authentication (stubbed)
@@ -150,6 +152,10 @@ codeCompilerExpress/
 ├── schemas/
 │   ├── submission.schema.js    # Submission validation
 │   └── status.schema.js        # Status validation
+│
+├── models/
+│   ├── submission.model.js     # Mongoose submission model
+│   └── status.model.js         # Mongoose status model
 │
 └── services/
     ├── cache/                  # Caching (placeholder)
@@ -184,6 +190,7 @@ codeCompilerExpress/
 | `routes/` | When adding new endpoints |
 | `middlewares/` | When adding request processing |
 | `schemas/` | When changing validation rules |
+| `models/` | When adding MongoDB schemas |
 | `services/queue/` | When changing job processing |
 | `services/container/` | When adding new languages or changing execution |
 | `services/storage/` | When changing how code is stored |
@@ -202,13 +209,22 @@ Create a `.env` file in the root directory:
 PORT=3000
 
 # ===================
-# Database (MSSQL)
+# Database (Choose one: MSSQL or MongoDB)
 # ===================
+# For MSSQL:
 DB_TYPE=mssql
 DB_USER=your_db_user
 DB_PASSWORD=your_db_password
 DB_SERVER_NAME=localhost
 DB_NAME=CodeCompilerDB
+
+# For MongoDB:
+DB_TYPE=mongo
+MONGO_URI=mongodb://localhost:27017
+MONGO_USER=your_mongo_user
+MONGO_PASSWORD=your_mongo_password
+MONGO_DB=CodeCompilerDB
+MONGO_APP_NAME=CodeCompilerExpress
 
 # ===================
 # Queue (BullMQ + Redis)
@@ -233,6 +249,8 @@ PROCESS_COUNT=1
 
 ### Database Setup
 
+#### MSSQL Setup
+
 Run these SQL commands to create required tables:
 
 ```sql
@@ -251,6 +269,12 @@ CREATE TABLE dbo.StatusDB (
     FOREIGN KEY (submission_id) REFERENCES SubmissionDB(submission_id)
 );
 ```
+
+#### MongoDB Setup
+
+No manual setup required. The application will automatically create the collections on first run:
+- `submissions` - Stores submission metadata
+- `statuses` - Stores submission status
 
 ---
 
@@ -300,7 +324,7 @@ POST /api/v1/auth/register
    │
    ├─▶ Save code to Pastebin → get URL
    │
-   ├─▶ Insert into MSSQL (transaction)
+   ├─▶ Insert into Database (transaction)
    │   - SubmissionDB: submission_id, date, language, code (URL)
    │   - StatusDB: status = "NEW"
    │
@@ -345,6 +369,28 @@ POST /api/v1/auth/register
 | C++ | `gcc:latest` | `g++ filename.cpp -o output && ./output` |
 | Ruby | `ruby:latest` | `ruby filename.rb` |
 | Go | `golang:latest` | `go run filename.go` |
+
+---
+
+## Testing
+
+The project includes both unit and integration tests using Jest.
+
+```bash
+# Run unit tests
+npm test
+
+# Run integration tests (requires Redis)
+npm run test:integration
+```
+
+### Test Structure
+
+```
+tests/
+├── unit/          # Unit tests for individual modules
+└── integration/   # Integration tests with Redis and database
+```
 
 ---
 
@@ -582,6 +628,13 @@ Error: Connection refused
 ```
 **Solution**: Check DB credentials in .env and ensure MSSQL is running
 
+### MongoDB Connection Failed
+
+```
+Error: Database connection failed
+```
+**Solution**: Check MONGO_URI and credentials in .env, ensure MongoDB is running
+
 ### Pastebin API Error
 
 ```
@@ -595,7 +648,7 @@ Error: HTTP 401: Unauthorized
 Queue is empty / Jobs not being picked up
 ```
 **Solution**: 
-1. Check if worker is running: `node services/workers/submissionWorker.js`
+1. Check if worker is running: `npm run worker`
 2. Check Redis connection
 3. Check queue name matches
 

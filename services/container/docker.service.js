@@ -13,7 +13,7 @@ class DockerService extends ContainerManager {
     this.docker = new Docker({ socketPath: "/var/run/docker.sock" });
   }
 
-  async startContainer(code, language) {
+  async startContainer(language) {
     // Implement logic to start a new Docker container
     console.log("Starting Docker container...");
     this.container = await this.docker.createContainer({
@@ -47,7 +47,7 @@ class DockerService extends ContainerManager {
     // Implement logic to execute code in a Docker container and capture the output and status
     const EXECUTION_TIMEOUT = 30000; // 30 seconds timeout
     
-    const containerId = await this.startContainer(code, language);
+    const containerId = await this.startContainer(language);
     const container = this.docker.getContainer(containerId);
     const fileName = `${submission_id}.${fileExtensions[language]}`;
     

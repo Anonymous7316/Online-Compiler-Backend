@@ -32,7 +32,7 @@ const enqueueSubmission = async ({ submission_id }) => {
     const message = submission_id;
     await publisher.pushToQueue(message);
   } catch (err) {
-    console.error("Error adding submission to Kafka queue: ", err);
+    console.error("Error adding submission to queue: ", err);
     throw err;
   }
 };

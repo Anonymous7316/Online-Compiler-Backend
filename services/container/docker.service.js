@@ -45,36 +45,72 @@ class DockerService extends ContainerManager {
 
   async executeCode(code, language, submission_id) {
     // Implement logic to execute code in a Docker container and capture the output and status
+    const EXECUTION_TIMEOUT = 30000; // 30 seconds timeout
+    
     const containerId = await this.startContainer(code, language);
     const container = this.docker.getContainer(containerId);
-    // Here you would implement the logic to copy the code into the container, execute it based on the language, and capture the output.
     const fileName = `${submission_id}.${fileExtensions[language]}`;
-    container.modem.followProgress(
-      container.exec({
-        Cmd: [
-          "sh",
-          "-c",
-          `echo "${code}" > /code/${fileName} && chmod +x /code/${fileName} && cd /code && ${this.getExecutionCommand(fileName, language)}`,
-        ],
-        AttachStdout: true,
-        AttachStderr: true,
-      }),
-      (err, stream) => {
-        if (err) {
-          return `Error executing code in container: ${err.message}`;
-        }
-        stream.on("data", (chunk) => {
-          return chunk.toString();
-        });
-        stream.on("end", async () => {
-          console.log(
-            "Execution completed. Stopping and removing container...",
-          );
+    
+    // Sanitize code to prevent shell injection
+    // Use base64 encoding to safely pass code to the container
+    const sanitizedCode = Buffer.from(code).toString('base64');
+    
+    // Create /code directory and write file using base64 decode (prevents injection)
+    const createDirCmd = `mkdir -p /code`;
+    const writeFileCmd = `echo "${sanitizedCode}" | base64 -d > /code/${fileName}`;
+    const chmodCmd = `chmod +x /code/${fileName}`;
+    const execCmd = this.getExecutionCommand(fileName, language);
+    
+    const fullCommand = `${createDirCmd} && ${writeFileCmd} && ${chmodCmd} && cd /code && ${execCmd}`;
+    
+    return new Promise(async (resolve, reject) => {
+      let output = "";
+      let timeoutId;
+      
+      // Set timeout to reject promise if execution takes too long
+      timeoutId = setTimeout(async () => {
+        console.log(`Execution timed out for submission ${submission_id}`);
+        try {
           await this.stopContainer(containerId);
           await this.removeContainer(containerId);
+        } catch (e) {
+          // Ignore cleanup errors
+        }
+        reject(new Error(`Execution timed out after ${EXECUTION_TIMEOUT / 1000} seconds`));
+      }, EXECUTION_TIMEOUT);
+      
+      container.exec({
+        Cmd: ["sh", "-c", fullCommand],
+        AttachStdout: true,
+        AttachStderr: true,
+      }, (err, exec) => {
+        if (err) {
+          clearTimeout(timeoutId);
+          reject(new Error(`Failed to create exec: ${err.message}`));
+          return;
+        }
+        
+        exec.start({ hijack: true, stdin: false }, (err, stream) => {
+          if (err) {
+            clearTimeout(timeoutId);
+            reject(new Error(`Failed to start exec: ${err.message}`));
+            return;
+          }
+          
+          stream.on("data", (chunk) => {
+            output += chunk.toString();
+          });
+          
+          stream.on("end", async () => {
+            clearTimeout(timeoutId);
+            console.log("Execution completed. Stopping and removing container...");
+            await this.stopContainer(containerId);
+            await this.removeContainer(containerId);
+            resolve(output);
+          });
         });
-      },
-    );
+      });
+    });
   }
 
   async stopContainer(containerId) {
